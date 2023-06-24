@@ -15,6 +15,9 @@ beta_variance = 0.2
 
 S = len(n)
 
+# Define growth rates (r)
+r = ones(5)
+
 # How many samples we want to get
 Samples = 10000
 
@@ -113,7 +116,7 @@ def rotationMatrix():
     return all_Rs
 
 
-# Debug with a control instead of random
+
 def calculateR(n_i):
     return gramschmidt( concatenate( (n_i, random.rand(len(n_i),len(n_i)-1)), axis=1 )).T
 
@@ -165,11 +168,13 @@ def CalculateElementWiseMeansVariances(betas):
             mu_out[t] = mean(betas[g,h,:])
             var_out[t] = (std(betas[g,h,:]))**2
             t = t+1
+    mu_matrix = resize(mu_out, (5,4))
 
-    return mu_out,var_out
+    return mu_out,var_out, mu_matrix
 
 
 
+# Function to sample betas using Cong method
 def cong(beta_mean,beta_variance, n):
     S = len(n)
     beta = ones((S, S))
@@ -195,29 +200,63 @@ def cong(beta_mean,beta_variance, n):
 
 
 
+# Function to perform Barbier's Lotka-Volterra equation
+def BarbierLV(beta, n, r):
+    # Calculate value for each species
+    S = len(n)
+    dndt = ones(S)
+
+    # Step 3. beta_{ij} = -alpha_{ij}
+    alpha = -beta
+
+    for i in range(S):
+        # Calculate summation part in equation
+        sum = 0
+        for j in range(S):
+            if j == i:
+                alpha_ij = -1
+            elif j < i:
+                alpha_ij = alpha[i, j]
+            else:
+                alpha_ij = alpha[i,j-1]
+            sum += alpha_ij * n[j] * n[i]
+
+        # Model dn_i/dt for species i
+        dndt[i] = r[i] * n[i] + r[i] * sum
+
+    return dndt
 
 
-# Obtain means and variances through Barbier Sampling (and time)
-    # Begin timing
-start_time = time.time()
-    # Generate samples of Beta matrix using Barbier method
-for i in range(Samples):
-    betas[:,:, i] = sampleBetaBarbier(beta_mean, beta_variance, n, rotationMatrix())
-    # Calculate means & variances of non-diagonal elements of Beta
-mu_sample,var_sample = CalculateElementWiseMeansVariances(betas)
-    # End Timer
-duration_barbier = time.time() - start_time
+# step 2 analytical: [-1.27717281e-16  5.85087534e-18  8.19233570e-17  0.00000000e+00 0.00000000e+00]
+# step 3 analytical: [-1.27717281e-16  5.85087534e-18  8.19233570e-17  0.00000000e+00 0.00000000e+00]
+# step 4 analytical: [-1.11022302e-16  0.00000000e+00  0.00000000e+00  0.00000000e+00 5.55111512e-17]
 
 
 
-# Obtain means and variances through Cong (and time)
-start_time = time.time()
-for i in range(Samples):
-    betas_cong[:,:,i] = cong(beta_mean, beta_variance, n)
 
-mu_sample2,var_sample2 = CalculateElementWiseMeansVariances(betas_cong)
 
-duration_cong = time.time() - start_time
+
+# # Obtain means and variances through Barbier Sampling (and time)
+#     # Begin timing
+# start_time = time.time()
+#     # Generate samples of Beta matrix using Barbier method
+# for i in range(Samples):
+#     betas[:,:, i] = sampleBetaBarbier(beta_mean, beta_variance, n, rotationMatrix())
+#     # Calculate means & variances of non-diagonal elements of Beta
+# mu_sample,var_sample, mu_matrix = CalculateElementWiseMeansVariances(betas)
+#     # End Timer
+# duration_barbier = time.time() - start_time
+#
+#
+#
+# # Obtain means and variances through Cong (and time)
+# start_time = time.time()
+# for i in range(Samples):
+#     betas_cong[:,:,i] = cong(beta_mean, beta_variance, n)
+#
+# mu_sample2,var_sample2, mu_matrix2 = CalculateElementWiseMeansVariances(betas_cong)
+#
+# duration_cong = time.time() - start_time
 
 
 
@@ -228,27 +267,33 @@ _, beta_analytical_matrix, var_analytical_matrix = calculateBarbierDistPropertie
 betaAVector = matrix.flatten(beta_analytical_matrix)
 varAVector = matrix.flatten(var_analytical_matrix)
 
-# Print Results
-print("Barbier algorithm: %.3f seconds" % (duration_barbier))
-print("Cong algorithm: %.3f seconds" % (duration_cong))
+
+# Test barbierLV output on Barbier analytical results
+print(BarbierLV(beta_analytical_matrix, n, r))
+# print(BarbierLV(mu_matrix, n))
+# print(BarbierLV(mu_matrix2, n))
 
 
 
-# print(mu_sample), print(mu_sample2)
-# print(var_sample), print(var_sample2)
+
+
+
+
+
+
+
+
+
+
+# # Print Results
+# print("Barbier algorithm: %.3f seconds" % (duration_barbier))
+# print("Cong algorithm: %.3f seconds" % (duration_cong))
 
 
 #
+# print(mu_sample), print(mu_sample2)
+# print(var_sample), print(var_sample2)
+# #
 # print(mu_sample-mu_sample2), print(var_sample-var_sample2)
 
 # print(mu_sample2)
-
-
-
-#
-# for i in range(20):
-#     print (varAVector[i])
-#
-# for i in range(20):
-#     print (betaAVector[i])
-
