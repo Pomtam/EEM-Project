@@ -12,6 +12,7 @@ n = array([[0.9203],
     [0.4228]])
 beta_mean = 0.4
 beta_variance = 0.2
+alpha_mean = -0.4
 
 S = len(n)
 
@@ -36,32 +37,32 @@ betas_cong = betas
 # distribution p(Beta|n) that Barbier et al. (2021) derive
 # Solves analytically
 
-def calculateBarbierDistProperties(betaMean, betaVariance, n):
+def calculateBarbierDistProperties(alphaMean, betaVariance, n):
     S = len(n)
-    beta_mean_matrix = zeros((S, S - 1))
-    beta_covariance_matrix = zeros((S - 1, S - 1, S))
-    beta_variance_matrix = zeros((S, S - 1))
+    alpha_mean_matrix = zeros((S, S - 1))
+    alpha_covariance_matrix = zeros((S - 1, S - 1, S))
+    alpha_variance_matrix = zeros((S, S - 1))
 
     for i in range(S):
         n_i = array([delete(n, i)]).T
 
         # Mean vectors mu_{Beta_i}
-        beta_mean_matrix[i, :] = ((1-n[i]) / ((linalg.norm(n_i))**2) * n_i
-                                 + betaMean * ones((S-1,1))
-                                 - matmul(betaMean * (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2), ones((S-1, 1)))).T
+        alpha_mean_matrix[i, :] = ((n[i] - 1) / ((linalg.norm(n_i))**2) * n_i
+                                 + alphaMean * ones((S-1,1))
+                                 - matmul(alphaMean * (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2), ones((S-1, 1)))).T
 
         # Covariance matrices Sigma_{Beta_i}
-        beta_covariance_matrix[:, :,  i] = betaVariance * (eye(S - 1) - (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2))
+        alpha_covariance_matrix[:, :,  i] = betaVariance * (eye(S - 1) - (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2))
 
         # Extract the diagonal elements of covariance matrices Sigma_{Beta_i}
         # to obtain a matrix of variances.
-        beta_variance_matrix[i, :] = transpose(diag(beta_covariance_matrix[:, :, i]))
+        alpha_variance_matrix[i, :] = transpose(diag(alpha_covariance_matrix[:, :, i]))
 
     # Overall mean of all non-diagonal Beta elements, calculated from the
     # individual means of these elements.
-    beta_mean_overall = mean(beta_mean_matrix)
+    alpha_mean_overall = mean(alpha_mean_matrix)
 
-    return beta_mean_overall, beta_mean_matrix, beta_variance_matrix
+    return alpha_mean_overall, alpha_mean_matrix, alpha_variance_matrix
 
 
 # Function to sample from Gaussian distribution defined by Barbier et al.(2021)
@@ -82,7 +83,7 @@ def sampleBetaBarbier(beta_mean,beta_variance,n,all_Rs):
         R = all_Rs[:,:, i]
 
         #Step 2. Calculate the first element of x, i.e. x_1.
-        x_1 = (1 - n[i]) / linalg.norm(n_i)
+        x_1 = (n[i] - 1) / linalg.norm(n_i)
 
         # Step 3. Calculate the remaining elements of x, i.e. x_2:x_{S-1}.
         x_mean = matmul(beta_mean * R[1:shape(R)[1],:], ones((S - 1, 1)))
@@ -99,7 +100,36 @@ def sampleBetaBarbier(beta_mean,beta_variance,n,all_Rs):
 
     return beta
 
+def sampleAlphaBarbier(alphaMean,beta_variance,n,all_Rs):
+    S = len(n)
+    alpha = ones((S,S))
 
+    all_Rs = rotationMatrix()
+
+    for i in range(S):
+        n_i = array([delete(n, i)]).T
+
+
+        #Step 1. Use the relevant rotation matrix.
+        R = all_Rs[:,:, i]
+
+        #Step 2. Calculate the first element of x, i.e. x_1.
+        x_1 = (n[i] - 1) / linalg.norm(n_i)
+
+        # Step 3. Calculate the remaining elements of x, i.e. x_2:x_{S-1}.
+        x_mean = matmul(alphaMean * R[1:shape(R)[1],:], ones((S - 1, 1)))
+        x_cov = beta_variance * eye(S - 2)
+        x_excl_1 = random.multivariate_normal(x_mean.T.tolist()[0], x_cov).T
+
+        # Step 4. Step 4. Join x together, and reverse transform to get all
+        # non-diagonal elements of the ith row of beta
+        alpha_i = matmul(R.T, array([concatenate((x_1, x_excl_1))]).T)
+
+        # Step 5. Place the found elements of Beta into the matrix Beta.
+        alpha[i, 0: i] = alpha_i[0: i].T
+        alpha[i, i + 1: shape(alpha)[1]] = alpha_i[i: shape(alpha_i)[0]].T
+
+    return alpha
 
 
 def rotationMatrix():
@@ -175,28 +205,28 @@ def CalculateElementWiseMeansVariances(betas):
 
 
 # Function to sample betas using Cong method
-def cong(beta_mean,beta_variance, n):
+def cong(alpha_mean, beta_variance, n):
     S = len(n)
-    beta = ones((S, S))
+    alpha = ones((S, S))
 
     for i in range(S):
         n_i = array([delete(n, i)]).T
 
         # Step 1. Sample y from normal distribution
-        y_mean = beta_mean * ones((S - 1, 1))
+        y_mean = alpha_mean * ones((S - 1, 1))
         y_cov = beta_variance * eye(S - 1)
 
 
         y = random.multivariate_normal(y_mean.T.tolist()[0], y_cov).T
 
         # Step 2. Obtain Beta_i
-        beta_i = (eye(S - 1) - n_i@n_i.T/linalg.norm(n_i)**2) @ y + (n_i/linalg.norm(n_i)**2).T[0] * (1 - n[i])
-        beta[i, 0: i] = beta_i[0: i].T
-        beta[i, i + 1:] = beta_i[i:]
+        alpha_i = (eye(S - 1) - n_i@n_i.T/linalg.norm(n_i)**2) @ y + (n_i/linalg.norm(n_i)**2).T[0] * (n[i] - 1)
+        alpha[i, 0: i] = alpha_i[0: i].T
+        alpha[i, i + 1:] = alpha_i[i:]
 
         # Step 3. Repeat for all rows to obtain a sampled matrix of Beta
 
-    return beta
+    return alpha
 
 
 
@@ -236,32 +266,32 @@ def BarbierLV(beta, n, r):
 
 
 
-# # Obtain means and variances through Barbier Sampling (and time)
-#     # Begin timing
-# start_time = time.time()
-#     # Generate samples of Beta matrix using Barbier method
-# for i in range(Samples):
-#     betas[:,:, i] = sampleBetaBarbier(beta_mean, beta_variance, n, rotationMatrix())
-#     # Calculate means & variances of non-diagonal elements of Beta
-# mu_sample,var_sample, mu_matrix = CalculateElementWiseMeansVariances(betas)
-#     # End Timer
-# duration_barbier = time.time() - start_time
-#
-#
-#
-# # Obtain means and variances through Cong (and time)
-# start_time = time.time()
-# for i in range(Samples):
-#     betas_cong[:,:,i] = cong(beta_mean, beta_variance, n)
-#
-# mu_sample2,var_sample2, mu_matrix2 = CalculateElementWiseMeansVariances(betas_cong)
-#
-# duration_cong = time.time() - start_time
+# Obtain means and variances through Barbier Sampling (and time)
+    # Begin timing
+start_time = time.time()
+    # Generate samples of Beta matrix using Barbier method
+for i in range(Samples):
+    betas[:,:, i] = sampleAlphaBarbier(alpha_mean, beta_variance, n, rotationMatrix())
+    # Calculate means & variances of non-diagonal elements of Beta
+mu_sample,var_sample, mu_matrix = CalculateElementWiseMeansVariances(betas)
+    # End Timer
+duration_barbier = time.time() - start_time
+
+
+
+# Obtain means and variances through Cong (and time)
+start_time = time.time()
+for i in range(Samples):
+    betas_cong[:,:,i] = cong(alpha_mean, beta_variance, n)
+
+mu_sample2,var_sample2, mu_matrix2 = CalculateElementWiseMeansVariances(betas_cong)
+
+duration_cong = time.time() - start_time
 
 
 
 # Obtain means and variances analytically
-_, beta_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(beta_mean, beta_variance, n)
+_, beta_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_mean, beta_variance, n)
 
 # Convert to analytical results to single column
 betaAVector = matrix.flatten(beta_analytical_matrix)
@@ -269,14 +299,9 @@ varAVector = matrix.flatten(var_analytical_matrix)
 
 
 # Test barbierLV output on Barbier analytical results
-print(BarbierLV(beta_analytical_matrix, n, r))
+# print(BarbierLV(beta_analytical_matrix, n, r))
 # print(BarbierLV(mu_matrix, n))
 # print(BarbierLV(mu_matrix2, n))
-
-
-
-
-
 
 
 
@@ -290,10 +315,13 @@ print(BarbierLV(beta_analytical_matrix, n, r))
 # print("Cong algorithm: %.3f seconds" % (duration_cong))
 
 
-#
-# print(mu_sample), print(mu_sample2)
-# print(var_sample), print(var_sample2)
-# #
-# print(mu_sample-mu_sample2), print(var_sample-var_sample2)
+print(beta_analytical_matrix)
+print(mu_matrix)
+print(mu_matrix2)
 
+
+# print(var_sample)
+# print(var_sample2)
+
+# print(mu_sample-mu_sample2), print(var_sample-var_sample2)
 # print(mu_sample2)
