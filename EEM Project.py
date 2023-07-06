@@ -14,6 +14,8 @@ beta_mean = 0.4
 beta_variance = 0.2
 alpha_mean = -0.4
 
+alphaii = -1
+
 S = len(n)
 
 # Define growth rates (r)
@@ -37,7 +39,7 @@ betas_cong = betas
 # distribution p(Beta|n) that Barbier et al. (2021) derive
 # Solves analytically
 
-def calculateBarbierDistProperties(alphaMean, betaVariance, n):
+def calculateBarbierDistProperties(alphaMean, betaVariance, n, alphaii):
     S = len(n)
     alpha_mean_matrix = zeros((S, S - 1))
     alpha_covariance_matrix = zeros((S - 1, S - 1, S))
@@ -47,7 +49,7 @@ def calculateBarbierDistProperties(alphaMean, betaVariance, n):
         n_i = array([delete(n, i)]).T
 
         # Mean vectors mu_{Beta_i}
-        alpha_mean_matrix[i, :] = ((n[i] - 1) / ((linalg.norm(n_i))**2) * n_i
+        alpha_mean_matrix[i, :] = ((-alphaii * n[i] - 1) / ((linalg.norm(n_i))**2) * n_i
                                  + alphaMean * ones((S-1,1))
                                  - matmul(alphaMean * (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2), ones((S-1, 1)))).T
 
@@ -83,7 +85,7 @@ def sampleBetaBarbier(beta_mean,beta_variance,n,all_Rs):
         R = all_Rs[:,:, i]
 
         #Step 2. Calculate the first element of x, i.e. x_1.
-        x_1 = (n[i] - 1) / linalg.norm(n_i)
+        x_1 = (1 - n[i]) / linalg.norm(n_i)
 
         # Step 3. Calculate the remaining elements of x, i.e. x_2:x_{S-1}.
         x_mean = matmul(beta_mean * R[1:shape(R)[1],:], ones((S - 1, 1)))
@@ -100,7 +102,7 @@ def sampleBetaBarbier(beta_mean,beta_variance,n,all_Rs):
 
     return beta
 
-def sampleAlphaBarbier(alphaMean,beta_variance,n,all_Rs):
+def sampleAlphaBarbier(alphaMean,beta_variance,n,all_Rs, alphaii):
     S = len(n)
     alpha = ones((S,S))
 
@@ -114,7 +116,7 @@ def sampleAlphaBarbier(alphaMean,beta_variance,n,all_Rs):
         R = all_Rs[:,:, i]
 
         #Step 2. Calculate the first element of x, i.e. x_1.
-        x_1 = (n[i] - 1) / linalg.norm(n_i)
+        x_1 = (-alphaii*n[i] - 1) / linalg.norm(n_i)
 
         # Step 3. Calculate the remaining elements of x, i.e. x_2:x_{S-1}.
         x_mean = matmul(alphaMean * R[1:shape(R)[1],:], ones((S - 1, 1)))
@@ -205,7 +207,7 @@ def CalculateElementWiseMeansVariances(betas):
 
 
 # Function to sample betas using Cong method
-def cong(alpha_mean, beta_variance, n):
+def cong(alpha_mean, beta_variance, n, alphaii):
     S = len(n)
     alpha = ones((S, S))
 
@@ -220,7 +222,7 @@ def cong(alpha_mean, beta_variance, n):
         y = random.multivariate_normal(y_mean.T.tolist()[0], y_cov).T
 
         # Step 2. Obtain Beta_i
-        alpha_i = (eye(S - 1) - n_i@n_i.T/linalg.norm(n_i)**2) @ y + (n_i/linalg.norm(n_i)**2).T[0] * (n[i] - 1)
+        alpha_i = (eye(S - 1) - n_i@n_i.T/linalg.norm(n_i)**2) @ y - (n_i/linalg.norm(n_i)**2).T[0] * (alphaii * n[i] + 1)
         alpha[i, 0: i] = alpha_i[0: i].T
         alpha[i, i + 1:] = alpha_i[i:]
 
@@ -271,7 +273,7 @@ def BarbierLV(beta, n, r):
 start_time = time.time()
     # Generate samples of Beta matrix using Barbier method
 for i in range(Samples):
-    betas[:,:, i] = sampleAlphaBarbier(alpha_mean, beta_variance, n, rotationMatrix())
+    betas[:,:, i] = sampleAlphaBarbier(alpha_mean, beta_variance, n, rotationMatrix(), alphaii)
     # Calculate means & variances of non-diagonal elements of Beta
 mu_sample,var_sample, mu_matrix = CalculateElementWiseMeansVariances(betas)
     # End Timer
@@ -282,7 +284,7 @@ duration_barbier = time.time() - start_time
 # Obtain means and variances through Cong (and time)
 start_time = time.time()
 for i in range(Samples):
-    betas_cong[:,:,i] = cong(alpha_mean, beta_variance, n)
+    betas_cong[:,:,i] = cong(alpha_mean, beta_variance, n, alphaii)
 
 mu_sample2,var_sample2, mu_matrix2 = CalculateElementWiseMeansVariances(betas_cong)
 
@@ -291,7 +293,7 @@ duration_cong = time.time() - start_time
 
 
 # Obtain means and variances analytically
-_, beta_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_mean, beta_variance, n)
+_, beta_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_mean, beta_variance, n, alphaii)
 
 # Convert to analytical results to single column
 betaAVector = matrix.flatten(beta_analytical_matrix)
