@@ -21,6 +21,10 @@ alphaii = -ones(5)
 # Define growth rates (r)
 r = ones(5)
 
+# Define alpha means and variances
+alpha_means = alpha_mean*ones((S,S))
+alpha_variances = beta_variance*ones((S,S))
+
 # How many samples we want to get
 Samples = 10000
 
@@ -39,22 +43,28 @@ betas_cong = betas
 # distribution p(Beta|n) that Barbier et al. (2021) derive
 # Solves analytically
 
-def calculateBarbierDistProperties(alphaMean, betaVariance, n, alphaii, r):
+def calculateBarbierDistProperties(alphaMeans, betaVariances, n, alphaii, r):
     S = len(n)
     alpha_mean_matrix = zeros((S, S - 1))
     alpha_covariance_matrix = zeros((S - 1, S - 1, S))
     alpha_variance_matrix = zeros((S, S - 1))
 
     for i in range(S):
+        # For species i, get alpha means and variances with all other species j neq. i
         n_i = array([delete(n, i)]).T
+
+        alphaMeansI = alphaMeans[i]
+        alphaVarI = betaVariances[i]
+        alphaMeans_i = array([delete(alphaMeansI, i)]).T
+        alphaVariances_i = delete(alphaVarI, i)
 
         # Mean vectors mu_{Beta_i}
         alpha_mean_matrix[i, :] = (((-r[i] - alphaii[i] * n[i]) / ((linalg.norm(n_i))**2)) * n_i
-                                 + alphaMean * ones((S-1,1))
-                                 - matmul(alphaMean * (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2), ones((S-1, 1)))).T
+                                   + alphaMeans_i
+                                   - n_i * transpose(n_i) / (linalg.norm(n_i))**2 @ alphaMeans_i).T
 
         # Covariance matrices Sigma_{Beta_i}
-        alpha_covariance_matrix[:, :,  i] = betaVariance * (eye(S - 1) - (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2))
+        alpha_covariance_matrix[:, :,  i] = diagflat(alphaVariances_i) @ (eye(S - 1) - (n_i * transpose(n_i)) / ((linalg.norm(n_i))**2))
 
         # Extract the diagonal elements of covariance matrices Sigma_{Beta_i}
         # to obtain a matrix of variances.
@@ -102,14 +112,21 @@ def sampleBetaBarbier(beta_mean,beta_variance,n,all_Rs):
 
     return beta
 
-def sampleAlphaBarbier(alphaMean,beta_variance,n,all_Rs, alphaii, r):
+def sampleAlphaBarbier(alphaMeans,alphaVariances,n,all_Rs, alphaii, r):
     S = len(n)
     alpha = ones((S,S))
 
     all_Rs = rotationMatrix()
 
     for i in range(S):
+        # For species i, get alpha means and variances with all other species j neq. i
         n_i = array([delete(n, i)]).T
+
+        alphaMeansI = alphaMeans[i]
+        alphaVarI = alphaVariances[i]
+        alphaMeans_i = array([delete(alphaMeansI, i)]).T
+        alphaVariances_i = delete(alphaVarI, i)
+
 
 
         #Step 1. Use the relevant rotation matrix.
@@ -119,8 +136,8 @@ def sampleAlphaBarbier(alphaMean,beta_variance,n,all_Rs, alphaii, r):
         x_1 = (-alphaii[i]*n[i] - r[i]) / linalg.norm(n_i)
 
         # Step 3. Calculate the remaining elements of x, i.e. x_2:x_{S-1}.
-        x_mean = matmul(alphaMean * R[1:shape(R)[1],:], ones((S - 1, 1)))
-        x_cov = beta_variance * eye(S - 2)
+        x_mean = R[1:,:] @ alphaMeans_i
+        x_cov = diag(alphaVariances_i[1:])
         x_excl_1 = random.multivariate_normal(x_mean.T.tolist()[0], x_cov).T
 
         # Step 4. Step 4. Join x together, and reverse transform to get all
@@ -207,16 +224,23 @@ def CalculateElementWiseMeansVariances(betas):
 
 
 # Function to sample betas using Cong method
-def cong(alpha_mean, beta_variance, n, alphaii, r):
+def cong(alphaMeans, alphaVariances, n, alphaii, r):
     S = len(n)
     alpha = ones((S, S))
 
     for i in range(S):
+        # For species i, get alpha means and variances w.r.t. other species j neq. i
         n_i = array([delete(n, i)]).T
 
+        alphaMeansI = alphaMeans[i]
+        alphaVarI = alphaVariances[i]
+        alphaMeans_i = array([delete(alphaMeansI, i)]).T
+        alphaVariances_i = delete(alphaVarI, i)
+
+
         # Step 1. Sample y from normal distribution
-        y_mean = alpha_mean * ones((S - 1, 1))
-        y_cov = beta_variance * eye(S - 1)
+        y_mean = alphaMeans_i
+        y_cov = diag(alphaVariances_i)
 
 
         y = random.multivariate_normal(y_mean.T.tolist()[0], y_cov).T
@@ -273,7 +297,7 @@ def BarbierLV(beta, n, r):
 start_time = time.time()
     # Generate samples of Beta matrix using Barbier method
 for i in range(Samples):
-    betas[:,:, i] = sampleAlphaBarbier(alpha_mean, beta_variance, n, rotationMatrix(), alphaii, r)
+    betas[:,:, i] = sampleAlphaBarbier(alpha_means, alpha_variances, n, rotationMatrix(), alphaii, r)
     # Calculate means & variances of non-diagonal elements of Beta
 mu_sample,var_sample, mu_matrix = CalculateElementWiseMeansVariances(betas)
     # End Timer
@@ -284,7 +308,7 @@ duration_barbier = time.time() - start_time
 # Obtain means and variances through Cong (and time)
 start_time = time.time()
 for i in range(Samples):
-    betas_cong[:,:,i] = cong(alpha_mean, beta_variance, n, alphaii, r)
+    betas_cong[:,:,i] = cong(alpha_means, alpha_variances, n, alphaii, r)
 
 mu_sample2,var_sample2, mu_matrix2 = CalculateElementWiseMeansVariances(betas_cong)
 
@@ -293,21 +317,11 @@ duration_cong = time.time() - start_time
 
 
 # Obtain means and variances analytically
-_, beta_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_mean, beta_variance, n, alphaii, r)
+_, alpha_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_means, alpha_variances, n, alphaii, r)
 
 # Convert to analytical results to single column
-betaAVector = matrix.flatten(beta_analytical_matrix)
+betaAVector = matrix.flatten(alpha_analytical_matrix)
 varAVector = matrix.flatten(var_analytical_matrix)
-
-
-# Test barbierLV output on Barbier analytical results
-# print(BarbierLV(beta_analytical_matrix, n, r))
-# print(BarbierLV(mu_matrix, n))
-# print(BarbierLV(mu_matrix2, n))
-
-
-
-
 
 
 
@@ -317,11 +331,11 @@ varAVector = matrix.flatten(var_analytical_matrix)
 # print("Cong algorithm: %.3f seconds" % (duration_cong))
 
 
-print(beta_analytical_matrix)
-print(mu_matrix)
-print(mu_matrix2)
+# print(alpha_analytical_matrix)
+# print(mu_matrix)
+# print(mu_matrix2)
 
-
+# print(var_analytical_matrix)
 # print(var_sample)
 # print(var_sample2)
 
