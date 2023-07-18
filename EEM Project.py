@@ -23,7 +23,13 @@ r = ones(5)
 
 # Define alpha means and variances
 alpha_means = alpha_mean*ones((S,S))
-alpha_variances = beta_variance*ones((S,S))
+# alpha_means = random.rand((S), (S))
+
+alpha_variances = beta_variance*ones((S, S))
+
+# Force some alpha_ij to be zero (from 1 to S) (i not equal to j)
+zero_alpha_ij = [(2, 1), (1, 3), (1, 4), (4, 3), (4, 5)]
+
 
 # How many samples we want to get
 Samples = 10000
@@ -43,7 +49,7 @@ betas_cong = betas
 # distribution p(Beta|n) that Barbier et al. (2021) derive
 # Solves analytically
 
-def calculateBarbierDistProperties(alphaMeans, betaVariances, n, alphaii, r):
+def calculateBarbierDistProperties(alphaMeans, betaVariances, n, alphaii, r, zeroAlphas):
     S = len(n)
     alpha_mean_matrix = zeros((S, S - 1))
     alpha_covariance_matrix = zeros((S - 1, S - 1, S))
@@ -69,6 +75,14 @@ def calculateBarbierDistProperties(alphaMeans, betaVariances, n, alphaii, r):
         # Extract the diagonal elements of covariance matrices Sigma_{Beta_i}
         # to obtain a matrix of variances.
         alpha_variance_matrix[i, :] = transpose(diag(alpha_covariance_matrix[:, :, i]))
+
+    # Force required non-diagonal alpha_ij to zero
+    for alpha in zeroAlphas:
+        row = alpha[0] - 1
+        col = alpha[1] - 1
+        # Adjust according to position relative to diagonal
+        if col >= row: col -= 1
+        alpha_mean_matrix[row, col] = 0
 
     # Overall mean of all non-diagonal Beta elements, calculated from the
     # individual means of these elements.
@@ -112,7 +126,7 @@ def sampleBetaBarbier(beta_mean,beta_variance,n,all_Rs):
 
     return beta
 
-def sampleAlphaBarbier(alphaMeans,alphaVariances,n,all_Rs, alphaii, r):
+def sampleAlphaBarbier(alphaMeans,alphaVariances,n,all_Rs, alphaii, r, zeroAlphas):
     S = len(n)
     alpha = ones((S,S))
 
@@ -147,6 +161,12 @@ def sampleAlphaBarbier(alphaMeans,alphaVariances,n,all_Rs, alphaii, r):
         # Step 5. Place the found elements of Beta into the matrix Beta.
         alpha[i, 0: i] = alpha_i[0: i].T
         alpha[i, i + 1: shape(alpha)[1]] = alpha_i[i: shape(alpha_i)[0]].T
+
+    # Force required non-diagonal alpha_ij to zero
+    for alphas in zeroAlphas:
+        row = alphas[0] - 1
+        col = alphas[1] - 1
+        alpha[row, col] = 0
 
     return alpha
 
@@ -224,7 +244,7 @@ def CalculateElementWiseMeansVariances(betas):
 
 
 # Function to sample betas using Cong method
-def cong(alphaMeans, alphaVariances, n, alphaii, r):
+def cong(alphaMeans, alphaVariances, n, alphaii, r, zeroAlphas):
     S = len(n)
     alpha = ones((S, S))
 
@@ -251,6 +271,12 @@ def cong(alphaMeans, alphaVariances, n, alphaii, r):
         alpha[i, i + 1:] = alpha_i[i:]
 
         # Step 3. Repeat for all rows to obtain a sampled matrix of Beta
+
+    # Force required non-diagonal alpha_ij to zero
+    for alphas in zeroAlphas:
+        row = alphas[0] - 1
+        col = alphas[1] - 1
+        alpha[row, col] = 0
 
     return alpha
 
@@ -297,7 +323,7 @@ def BarbierLV(beta, n, r):
 start_time = time.time()
     # Generate samples of Beta matrix using Barbier method
 for i in range(Samples):
-    betas[:,:, i] = sampleAlphaBarbier(alpha_means, alpha_variances, n, rotationMatrix(), alphaii, r)
+    betas[:,:, i] = sampleAlphaBarbier(alpha_means, alpha_variances, n, rotationMatrix(), alphaii, r, zero_alpha_ij)
     # Calculate means & variances of non-diagonal elements of Beta
 mu_sample,var_sample, mu_matrix = CalculateElementWiseMeansVariances(betas)
     # End Timer
@@ -308,7 +334,7 @@ duration_barbier = time.time() - start_time
 # Obtain means and variances through Cong (and time)
 start_time = time.time()
 for i in range(Samples):
-    betas_cong[:,:,i] = cong(alpha_means, alpha_variances, n, alphaii, r)
+    betas_cong[:,:,i] = cong(alpha_means, alpha_variances, n, alphaii, r, zero_alpha_ij)
 
 mu_sample2,var_sample2, mu_matrix2 = CalculateElementWiseMeansVariances(betas_cong)
 
@@ -317,7 +343,7 @@ duration_cong = time.time() - start_time
 
 
 # Obtain means and variances analytically
-_, alpha_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_means, alpha_variances, n, alphaii, r)
+_, alpha_analytical_matrix, var_analytical_matrix = calculateBarbierDistProperties(alpha_means, alpha_variances, n, alphaii, r, zero_alpha_ij)
 
 # Convert to analytical results to single column
 betaAVector = matrix.flatten(alpha_analytical_matrix)
@@ -331,9 +357,9 @@ varAVector = matrix.flatten(var_analytical_matrix)
 # print("Cong algorithm: %.3f seconds" % (duration_cong))
 
 
-# print(alpha_analytical_matrix)
-# print(mu_matrix)
-# print(mu_matrix2)
+print(alpha_analytical_matrix)
+print(mu_matrix)
+print(mu_matrix2)
 
 # print(var_analytical_matrix)
 # print(var_sample)
