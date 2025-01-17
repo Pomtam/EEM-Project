@@ -3,7 +3,7 @@
 
 
 ## Introduction  
-The MY-RES project aims to improve the realism of the ensemble ecosystem model (EEM) generation process by integrating constraints on the steady-state abundances (𝑛\*) of species in a network. This builds upon the Barbier et al. (2021) algorithm, known for its ability to sample interaction strengths (𝛼) characterising feasible ecosystems with a 100% acceptance rate. Significantly, this allows for the generation of feasible parameter sets based on supplied values of $n^*$ and $r$, which in turn, eliminates the need (and the computational cost required) to check the feasibility (and realism) of sampled parameter sets.
+This project aims to improve the realism of the ensemble ecosystem model (EEM) generation process by integrating constraints on the steady-state abundances (𝑛\*) of species in a network. Building upon the Barbier et al. (2021) algorithm, known for its ability to sample interaction strengths (𝛼) characterising feasible ecosystems with a 100% acceptance rate, this improved algorithm would allow for the generation of feasible parameter sets based on supplied values of $n^*$ and growth rates $r$. Significantly, this eliminates the need (and the computational cost required) to check the feasibility (and realism) of sampled parameter sets.
 
 
 
